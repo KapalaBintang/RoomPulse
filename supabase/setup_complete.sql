@@ -601,55 +601,23 @@ INSERT INTO public.rooms (id, name, capacity, device_id) VALUES
 ('22222222-2222-2222-2222-222222222222', 'Room 102 - Collab Studio', 8, 'device-room-102')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, capacity = EXCLUDED.capacity, device_id = EXCLUDED.device_id;
 
--- Seed Auth Users & Profiles (Alice, Bob, Staff)
+-- Fix any NULL text columns in auth.users that cause GoTrue "Database error querying schema"
 DO $$
-DECLARE
-    staff_id uuid := 'a1111111-1111-1111-1111-111111111111';
-    student1_id uuid := 'b2222222-2222-2222-2222-222222222222';
-    student2_id uuid := 'c3333333-3333-3333-3333-333333333333';
-    pw_hash text := crypt('password123', gen_salt('bf'));
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = staff_id) THEN
-        INSERT INTO auth.users (
-            instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000000', staff_id, 'authenticated', 'authenticated',
-            'staff@roompulse.local', pw_hash, now(),
-            '{"provider":"email","providers":["email"]}', '{"display_name":"Library Staff"}',
-            now(), now(), ''
-        );
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = student1_id) THEN
-        INSERT INTO auth.users (
-            instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000000', student1_id, 'authenticated', 'authenticated',
-            'student1@roompulse.local', pw_hash, now(),
-            '{"provider":"email","providers":["email"]}', '{"display_name":"Alice (Student)"}',
-            now(), now(), ''
-        );
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = student2_id) THEN
-        INSERT INTO auth.users (
-            instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
-            raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000000', student2_id, 'authenticated', 'authenticated',
-            'student2@roompulse.local', pw_hash, now(),
-            '{"provider":"email","providers":["email"]}', '{"display_name":"Bob (Student)"}',
-            now(), now(), ''
-        );
-    END IF;
-
-    INSERT INTO public.profiles (id, display_name, role) VALUES
-    (staff_id, 'Library Staff Lead', 'staff'),
-    (student1_id, 'Alice Pratama', 'student'),
-    (student2_id, 'Bob Santoso', 'student')
-    ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, role = EXCLUDED.role;
+    DELETE FROM public.profiles WHERE id IN ('a1111111-1111-1111-1111-111111111111', 'b2222222-2222-2222-2222-222222222222', 'c3333333-3333-3333-3333-333333333333');
+    DELETE FROM auth.users WHERE email LIKE '%@roompulse.local';
+EXCEPTION WHEN OTHERS THEN
+    -- In case of foreign key references, update NULL fields instead
+    UPDATE auth.users
+    SET confirmation_token = COALESCE(confirmation_token, ''),
+        recovery_token = COALESCE(recovery_token, ''),
+        email_change = COALESCE(email_change, ''),
+        email_change_token_new = COALESCE(email_change_token_new, ''),
+        email_change_token_current = COALESCE(email_change_token_current, ''),
+        phone = COALESCE(phone, ''),
+        phone_change = COALESCE(phone_change, ''),
+        phone_change_token = COALESCE(phone_change_token, ''),
+        reauthentication_token = COALESCE(reauthentication_token, '');
 END $$;
 
 -- 8. PERMISSIONS & GRANTS (Fix PostgREST view & table access)
