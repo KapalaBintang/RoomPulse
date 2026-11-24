@@ -84,7 +84,14 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({ roomId, onBack, 
 
   const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
+
+    let currentUser = user;
+    if (!currentUser) {
+      const { data: userData } = await supabase.auth.getUser();
+      currentUser = userData.user;
+    }
+
+    if (!currentUser) {
       setFormError('Please sign in to reserve this room.');
       return;
     }

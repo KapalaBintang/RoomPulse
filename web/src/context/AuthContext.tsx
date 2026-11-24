@@ -30,11 +30,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!error && data) {
         setProfile(data as Profile);
       } else {
-        // Fallback profile if row missing
+        // Fallback: auto-create or restore profile row
+        const { data: userData } = await supabase.auth.getUser();
+        const role = userData.user?.email?.startsWith('staff') ? 'staff' : 'student';
+        const displayName =
+          userData.user?.user_metadata?.display_name ||
+          (userData.user?.email ? userData.user.email.split('@')[0] : 'Student User');
+
+        await supabase.from('profiles').upsert({
+          id: userId,
+          display_name: displayName,
+          role: role,
+        });
+
         setProfile({
           id: userId,
-          display_name: 'Student User',
-          role: 'student',
+          display_name: displayName,
+          role: role,
           telegram_chat_id: null,
         });
       }
@@ -68,11 +80,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithEmail = async (email: string, pass: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    let { data, error } = await supabase.auth.signInWithPassword({
       email,
       password: pass,
     });
-    return { error: error ? error.message : null };
+
+    // If demo account doesn't exist in Supabase Auth yet, auto-register
+    if (error && email.endsWith('@roompulse.local')) {
+      const displayName = email.startsWith('staff')
+        ? 'Library Staff Lead'
+        : email.includes('student1')
+        ? 'Alice Pratama'
+        : 'Bob Santoso';
+
+      const sup = await supabase.auth.signUp({
+        email,
+        password: pass,
+        options: { data: { display_name: displayName } },
+      });
+
+      if (sup.error) {
+        return { error: error.message };
+      }
+
+      data = sup.data as any;
+      error = null;
+    }
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (data?.user) {
+      setUser(data.user);
+      await fetchProfile(data.user.id);
+    }
+    return { error: null };
   };
 
   const signOut = async () => {
@@ -84,10 +127,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const switchUserQuick = async (email: string) => {
     setLoading(true);
     await supabase.auth.signOut();
-    await supabase.auth.signInWithPassword({
+
+    let { data, error } = await supabase.auth.signInWithPassword({
       email,
       password: 'password123',
     });
+
+    // If demo account doesn't exist in Supabase Auth yet, auto-register
+    if (error) {
+      const displayName = email.startsWith('staff')
+        ? 'Library Staff Lead'
+        : email.includes('student1')
+        ? 'Alice Pratama'
+        : 'Bob Santoso';
+
+      const sup = await supabase.auth.signUp({
+        email,
+        password: 'password123',
+        options: { data: { display_name: displayName } },
+      });
+
+      if (sup.error) {
+        setLoading(false);
+        throw new Error(error.message || sup.error.message);
+      }
+
+      data = sup.data as any;
+    }
+
+    if (data?.user) {
+      setUser(data.user);
+      await fetchProfile(data.user.id);
+    }
     setLoading(false);
   };
 
