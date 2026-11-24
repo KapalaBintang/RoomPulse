@@ -171,7 +171,7 @@ CREATE POLICY "Authenticated users can view settings" ON public.settings FOR SEL
 CREATE POLICY "Staff can update settings" ON public.settings FOR UPDATE TO authenticated USING (public.is_staff()) WITH CHECK (public.is_staff());
 
 -- 4. VIEWS
-CREATE OR REPLACE VIEW public.rooms_with_status AS
+CREATE OR REPLACE VIEW public.rooms_with_status WITH (security_invoker = false) AS
 WITH current_bookings AS (
     SELECT DISTINCT ON (room_id)
         b.id AS booking_id,
@@ -243,7 +243,7 @@ LEFT JOIN public.devices dev ON rm.device_id = dev.id
 LEFT JOIN current_bookings cb ON rm.id = cb.room_id
 LEFT JOIN latest_readings lr ON rm.device_id = lr.device_id;
 
-CREATE OR REPLACE VIEW public.admin_summary AS
+CREATE OR REPLACE VIEW public.admin_summary WITH (security_invoker = false) AS
 WITH stats AS (
     SELECT
         count(*)::int AS total_bookings,
@@ -651,3 +651,28 @@ BEGIN
     (student2_id, 'Bob Santoso', 'student')
     ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name, role = EXCLUDED.role;
 END $$;
+
+-- 8. PERMISSIONS & GRANTS (Fix PostgREST view & table access)
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+
+-- Views permissions
+GRANT SELECT ON public.rooms_with_status TO anon, authenticated;
+GRANT SELECT ON public.admin_summary TO anon, authenticated;
+
+-- Table permissions (Row Level Security handles actual row access)
+GRANT SELECT ON public.rooms TO anon, authenticated;
+GRANT SELECT ON public.sensor_readings TO anon, authenticated;
+GRANT SELECT ON public.bookings TO anon, authenticated;
+GRANT SELECT ON public.notifications TO anon, authenticated;
+GRANT SELECT ON public.profiles TO anon, authenticated;
+GRANT SELECT ON public.settings TO anon, authenticated;
+GRANT SELECT ON public.events TO anon, authenticated;
+GRANT SELECT (id, last_seen_at) ON public.devices TO anon, authenticated;
+
+-- Allow reading devices table for sensor presence status check
+DROP POLICY IF EXISTS "Anyone can view devices" ON public.devices;
+CREATE POLICY "Anyone can view devices" ON public.devices FOR SELECT TO authenticated, anon USING (true);
+
+-- Functions & RPCs
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated;
+
