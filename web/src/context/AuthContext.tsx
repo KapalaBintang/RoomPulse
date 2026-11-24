@@ -8,6 +8,12 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<{ error: string | null }>;
+  signUpWithEmail: (
+    email: string,
+    pass: string,
+    displayName: string,
+    role: 'student' | 'staff'
+  ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   switchUserQuick: (email: string) => Promise<void>;
 }
@@ -118,6 +124,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: null };
   };
 
+  const signUpWithEmail = async (
+    email: string,
+    pass: string,
+    displayName: string,
+    role: 'student' | 'staff'
+  ) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: { display_name: displayName, role },
+      },
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    if (data?.user) {
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        display_name: displayName,
+        role: role,
+      });
+
+      setUser(data.user);
+      setProfile({
+        id: data.user.id,
+        display_name: displayName,
+        role: role,
+        telegram_chat_id: null,
+      });
+    }
+
+    return { error: null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -169,6 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile,
         loading,
         loginWithEmail,
+        signUpWithEmail,
         signOut,
         switchUserQuick,
       }}
